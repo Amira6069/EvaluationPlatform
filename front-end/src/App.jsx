@@ -3,12 +3,25 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import LoginPage from './Pages/auth/LoginPage';
 import RegisterPage from './Pages/auth/RegisterPage';
 import DashboardPage from './Pages/Organization/DashboardPage';
-import { ROUTES } from './utils/constants';
+import EvaluationFormPage from './Pages/Organization/EvaluationFormPage';
+import { ROUTES, STORAGE_KEYS, USER_ROLES } from './utils/constants';
 
-// Protected Route Component
-const ProtectedRoute = ({ children }) => {
-  const token = localStorage.getItem('governance_token');
-  return token ? children : <Navigate to={ROUTES.LOGIN} />;
+// Protected Route component
+const ProtectedRoute = ({ children, allowedRoles = [] }) => {
+  const token = localStorage.getItem(STORAGE_KEYS.TOKEN);
+  const user = JSON.parse(localStorage.getItem(STORAGE_KEYS.USER) || '{}');
+
+  if (!token) {
+    // Not logged in → go to login
+    return <Navigate to={ROUTES.LOGIN} replace />;
+  }
+
+  if (allowedRoles.length > 0 && !allowedRoles.includes(user.role)) {
+    // Role not allowed → go to unauthorized page (you can create this later)
+    return <Navigate to="/unauthorized" replace />;
+  }
+
+  return children;
 };
 
 function App() {
@@ -18,19 +31,28 @@ function App() {
         {/* Public Routes */}
         <Route path={ROUTES.LOGIN} element={<LoginPage />} />
         <Route path={ROUTES.REGISTER} element={<RegisterPage />} />
-        
+
         {/* Protected Routes */}
         <Route
           path={ROUTES.ORG_DASHBOARD}
           element={
-            <ProtectedRoute>
+            <ProtectedRoute allowedRoles={[USER_ROLES.ORGANIZATION]}>
               <DashboardPage />
             </ProtectedRoute>
           }
         />
-        
-        {/* Default Route */}
-        <Route path="/" element={<Navigate to={ROUTES.LOGIN} />} />
+        <Route
+          path="/organization/evaluation/new"
+          element={
+            <ProtectedRoute allowedRoles={[USER_ROLES.ORGANIZATION]}>
+              <EvaluationFormPage />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Default & fallback */}
+        <Route path="/" element={<Navigate to={ROUTES.LOGIN} replace />} />
+        <Route path="*" element={<Navigate to={ROUTES.LOGIN} replace />} />
       </Routes>
     </BrowserRouter>
   );
