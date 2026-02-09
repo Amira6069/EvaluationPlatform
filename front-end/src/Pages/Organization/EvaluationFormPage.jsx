@@ -1,403 +1,865 @@
-import React, { useState } from 'react';
-import MainLayout from '../../components/layout/MainLayout';
-import { 
-  ChevronDown, 
-  ChevronRight, 
-  Upload, 
-  Save, 
-  Send,
-  CheckCircle2,
-  Circle,
-  X
-} from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
+import { GOVERNANCE_PRINCIPLES, MATURITY_LEVELS } from '../../utils/constants';
 
 const EvaluationFormPage = () => {
-  const [expandedPrinciples, setExpandedPrinciples] = useState([1]);
-  const [expandedPractices, setExpandedPractices] = useState([1]);
-  const [selectedLevels, setSelectedLevels] = useState({});
-  const [comments, setComments] = useState({});
-  const [uploadedFiles, setUploadedFiles] = useState({});
+  const navigate = useNavigate();
+  const { id } = useParams();
+  const user = JSON.parse(localStorage.getItem('governance_user') || '{}');
   
-  // Mock data - Replace with API call
-  const evaluationData = {
-    principles: [
-      {
-        id: 1,
-        name: 'Transparency',
-        practices: [
-          {
-            id: 1,
-            name: 'Public Information',
-            criteria: [
-              {
-                id: 1,
-                name: 'Official website exists',
-                description: 'Organization must have a functional public website'
-              },
-              {
-                id: 2,
-                name: 'Contact information available',
-                description: 'Public contact details are easily accessible'
-              }
-            ]
-          },
-          {
-            id: 2,
-            name: 'Open Data',
-            criteria: [
-              {
-                id: 3,
-                name: 'Budget published',
-                description: 'Annual budget is publicly available'
-              }
-            ]
-          }
-        ]
-      },
-      {
-        id: 2,
-        name: 'Accountability',
-        practices: [
-          {
-            id: 3,
-            name: 'Reporting',
-            criteria: [
-              {
-                id: 4,
-                name: 'Annual reports published',
-                description: 'Organization publishes yearly activity reports'
-              }
-            ]
-          }
-        ]
-      }
-    ]
+  const [evaluation, setEvaluation] = useState(null);
+  const [responses, setResponses] = useState({});
+  const [expandedPrinciples, setExpandedPrinciples] = useState([1]); // First principle expanded by default
+  const [expandedPractices, setExpandedPractices] = useState({});
+  const [saving, setSaving] = useState(false);
+  
+  useEffect(() => {
+    loadEvaluation();
+  }, [id]);
+  
+  const loadEvaluation = () => {
+    const data = localStorage.getItem(`evaluation_${id}`);
+    if (data) {
+      const evalData = JSON.parse(data);
+      setEvaluation(evalData);
+      setResponses(evalData.responses || {});
+    } else {
+      alert('Evaluation not found!');
+      navigate('/organization/evaluations');
+    }
   };
   
-  const maturityLevels = [
-    { value: 0, label: "N'existe pas", color: 'text-red-600' },
-    { value: 1, label: 'En cours', color: 'text-orange-600' },
-    { value: 2, label: 'Réalisé', color: 'text-blue-600' },
-    { value: 3, label: 'Validé', color: 'text-green-600' }
-  ];
+  const handleMaturityChange = (principleId, practiceId, criterionId, level) => {
+    const key = `${principleId}-${practiceId}-${criterionId}`;
+    
+    setResponses(prev => ({
+      ...prev,
+      [key]: {
+        ...prev[key],
+        principleId,
+        practiceId,
+        criterionId,
+        maturityLevel: level,
+      }
+    }));
+  };
+  
+  const handleCommentChange = (principleId, practiceId, criterionId, comment) => {
+    const key = `${principleId}-${practiceId}-${criterionId}`;
+    
+    setResponses(prev => ({
+      ...prev,
+      [key]: {
+        ...prev[key],
+        principleId,
+        practiceId,
+        criterionId,
+        comment,
+      }
+    }));
+  };
+  
+  const handleFileUpload = (principleId, practiceId, criterionId, event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+    
+    const key = `${principleId}-${practiceId}-${criterionId}`;
+    
+    setResponses(prev => ({
+      ...prev,
+      [key]: {
+        ...prev[key],
+        principleId,
+        practiceId,
+        criterionId,
+        fileName: file.name,
+        fileSize: file.size,
+        fileType: file.type,
+      }
+    }));
+  };
   
   const togglePrinciple = (principleId) => {
     setExpandedPrinciples(prev => 
-      prev.includes(principleId) 
+      prev.includes(principleId)
         ? prev.filter(id => id !== principleId)
         : [...prev, principleId]
     );
   };
   
-  const togglePractice = (practiceId) => {
-    setExpandedPractices(prev => 
-      prev.includes(practiceId) 
-        ? prev.filter(id => id !== practiceId)
-        : [...prev, practiceId]
-    );
-  };
-  
-  const handleMaturityChange = (criterionId, level) => {
-    setSelectedLevels(prev => ({ ...prev, [criterionId]: level }));
-  };
-  
-  const handleFileUpload = (criterionId, event) => {
-    const file = event.target.files[0];
-    if (file) {
-      setUploadedFiles(prev => ({ ...prev, [criterionId]: file }));
-    }
-  };
-  
-  const removeFile = (criterionId) => {
-    setUploadedFiles(prev => {
-      const newFiles = { ...prev };
-      delete newFiles[criterionId];
-      return newFiles;
-    });
+  const togglePractice = (principleId, practiceId) => {
+    const key = `${principleId}-${practiceId}`;
+    setExpandedPractices(prev => ({
+      ...prev,
+      [key]: !prev[key]
+    }));
   };
   
   const calculateProgress = () => {
-    const totalCriteria = evaluationData.principles.reduce(
-      (sum, principle) => sum + principle.practices.reduce(
-        (pSum, practice) => pSum + practice.criteria.length, 0
-      ), 0
-    );
-    const completedCriteria = Object.keys(selectedLevels).length;
-    return Math.round((completedCriteria / totalCriteria) * 100);
+    const totalCriteria = GOVERNANCE_PRINCIPLES.reduce((sum, principle) => {
+      return sum + principle.practices.reduce((pSum, practice) => {
+        return pSum + practice.criteria.length;
+      }, 0);
+    }, 0);
+    
+    const completedCriteria = Object.values(responses).filter(r => r.maturityLevel !== null && r.maturityLevel !== undefined).length;
+    
+    return totalCriteria > 0 ? Math.round((completedCriteria / totalCriteria) * 100) : 0;
+  };
+  
+  const getPrincipleProgress = (principle) => {
+    const totalCriteria = principle.practices.reduce((sum, practice) => sum + practice.criteria.length, 0);
+    
+    const completedCriteria = principle.practices.reduce((sum, practice) => {
+      return sum + practice.criteria.filter(criterion => {
+        const key = `${principle.id}-${practice.id}-${criterion.id}`;
+        return responses[key]?.maturityLevel !== null && responses[key]?.maturityLevel !== undefined;
+      }).length;
+    }, 0);
+    
+    return { completed: completedCriteria, total: totalCriteria };
   };
   
   const handleSaveDraft = () => {
-    console.log('Saving draft...', { selectedLevels, comments, uploadedFiles });
-    alert('Draft saved successfully!');
+    if (!evaluation) return;
+    
+    setSaving(true);
+    
+    const updatedEvaluation = {
+      ...evaluation,
+      responses,
+      lastModified: new Date().toISOString(),
+      status: 'draft',
+    };
+    
+    localStorage.setItem(`evaluation_${id}`, JSON.stringify(updatedEvaluation));
+    
+    setTimeout(() => {
+      setSaving(false);
+      alert('Draft saved successfully!');
+    }, 500);
   };
   
   const handleSubmit = () => {
     const progress = calculateProgress();
+    
     if (progress < 100) {
-      alert(`Please complete all criteria. Current progress: ${progress}%`);
-      return;
+      if (!window.confirm(`Your evaluation is only ${progress}% complete. Do you want to submit anyway?`)) {
+        return;
+      }
     }
-    console.log('Submitting evaluation...', { selectedLevels, comments, uploadedFiles });
+    
+    const updatedEvaluation = {
+      ...evaluation,
+      responses,
+      status: 'submitted',
+      submittedDate: new Date().toISOString(),
+    };
+    
+    localStorage.setItem(`evaluation_${id}`, JSON.stringify(updatedEvaluation));
+    
     alert('Evaluation submitted successfully!');
+    navigate(`/organization/evaluations/${id}`);
   };
   
-  const progress = calculateProgress();
+  const handleLogout = () => {
+    localStorage.removeItem('governance_token');
+    localStorage.removeItem('governance_user');
+    navigate('/login');
+  };
+  
+  const styles = {
+    container: {
+      minHeight: '100vh',
+      background: '#f9fafb',
+    },
+    header: {
+      background: 'white',
+      borderBottom: '1px solid #e5e7eb',
+      padding: '16px 0',
+      position: 'sticky',
+      top: 0,
+      zIndex: 50,
+      boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+    },
+    headerContent: {
+      maxWidth: '1400px',
+      margin: '0 auto',
+      padding: '0 24px',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+    },
+    logo: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: '8px',
+      cursor: 'pointer',
+    },
+    logoIcon: {
+      width: '40px',
+      height: '40px',
+      background: '#2563eb',
+      borderRadius: '8px',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      fontSize: '20px',
+    },
+    logoText: {
+      fontSize: '20px',
+      fontWeight: 'bold',
+      color: '#111827',
+    },
+    headerRight: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: '12px',
+    },
+    saveDraftBtn: {
+      padding: '8px 16px',
+      background: '#f3f4f6',
+      color: '#374151',
+      border: 'none',
+      borderRadius: '8px',
+      cursor: 'pointer',
+      fontSize: '14px',
+      fontWeight: '500',
+      display: 'flex',
+      alignItems: 'center',
+      gap: '6px',
+    },
+    userInfo: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: '8px',
+      padding: '8px 12px',
+      background: '#f3f4f6',
+      borderRadius: '8px',
+    },
+    logoutBtn: {
+      padding: '8px 16px',
+      background: '#ef4444',
+      color: 'white',
+      border: 'none',
+      borderRadius: '8px',
+      cursor: 'pointer',
+      fontSize: '14px',
+      fontWeight: '500',
+    },
+    layout: {
+      maxWidth: '1400px',
+      margin: '0 auto',
+      display: 'flex',
+      gap: '24px',
+      padding: '24px',
+    },
+    sidebar: {
+      width: '280px',
+      position: 'sticky',
+      top: '88px',
+      height: 'fit-content',
+      maxHeight: 'calc(100vh - 112px)',
+      overflowY: 'auto',
+      background: 'white',
+      borderRadius: '12px',
+      padding: '20px',
+      boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+    },
+    sidebarTitle: {
+      fontSize: '14px',
+      fontWeight: '600',
+      color: '#6b7280',
+      marginBottom: '12px',
+      textTransform: 'uppercase',
+      letterSpacing: '0.5px',
+    },
+    principleNav: {
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '8px',
+    },
+    principleNavItem: {
+      padding: '10px 12px',
+      borderRadius: '8px',
+      cursor: 'pointer',
+      fontSize: '13px',
+      transition: 'all 0.2s',
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+    },
+    principleNavItemActive: {
+      background: '#eff6ff',
+      color: '#2563eb',
+      fontWeight: '500',
+    },
+    progressBadge: {
+      fontSize: '11px',
+      padding: '2px 8px',
+      borderRadius: '10px',
+      background: '#f3f4f6',
+      color: '#6b7280',
+    },
+    main: {
+      flex: 1,
+      minWidth: 0,
+    },
+    formHeader: {
+      background: 'white',
+      borderRadius: '12px',
+      padding: '24px',
+      marginBottom: '24px',
+      boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+    },
+    formTitle: {
+      fontSize: '28px',
+      fontWeight: 'bold',
+      color: '#111827',
+      marginBottom: '8px',
+    },
+    formSubtitle: {
+      color: '#6b7280',
+      marginBottom: '16px',
+    },
+    progressContainer: {
+      marginTop: '16px',
+    },
+    progressLabel: {
+      display: 'flex',
+      justifyContent: 'space-between',
+      marginBottom: '8px',
+      fontSize: '14px',
+      fontWeight: '500',
+      color: '#374151',
+    },
+    progressBar: {
+      width: '100%',
+      height: '12px',
+      background: '#e5e7eb',
+      borderRadius: '6px',
+      overflow: 'hidden',
+    },
+    progressFill: {
+      height: '100%',
+      background: 'linear-gradient(90deg, #2563eb 0%, #3b82f6 100%)',
+      transition: 'width 0.3s ease',
+    },
+    principleSection: {
+      background: 'white',
+      borderRadius: '12px',
+      marginBottom: '20px',
+      overflow: 'hidden',
+      boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+    },
+    principleHeader: {
+      padding: '20px 24px',
+      cursor: 'pointer',
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      background: '#fafafa',
+      borderBottom: '1px solid #e5e7eb',
+      transition: 'background 0.2s',
+    },
+    principleHeaderExpanded: {
+      background: '#f3f4f6',
+    },
+    principleTitle: {
+      fontSize: '18px',
+      fontWeight: '600',
+      color: '#111827',
+      display: 'flex',
+      alignItems: 'center',
+      gap: '12px',
+    },
+    principleNumber: {
+      width: '32px',
+      height: '32px',
+      background: '#2563eb',
+      color: 'white',
+      borderRadius: '8px',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      fontSize: '14px',
+      fontWeight: 'bold',
+    },
+    principleProgress: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: '12px',
+    },
+    chevron: {
+      transition: 'transform 0.2s',
+    },
+    chevronExpanded: {
+      transform: 'rotate(180deg)',
+    },
+    principleContent: {
+      padding: '24px',
+    },
+    practiceSection: {
+      marginBottom: '24px',
+      border: '1px solid #e5e7eb',
+      borderRadius: '8px',
+      overflow: 'hidden',
+    },
+    practiceHeader: {
+      padding: '16px 20px',
+      background: '#f9fafb',
+      cursor: 'pointer',
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+    },
+    practiceTitle: {
+      fontSize: '16px',
+      fontWeight: '600',
+      color: '#374151',
+    },
+    practiceContent: {
+      padding: '20px',
+      background: 'white',
+    },
+    criterionCard: {
+      marginBottom: '24px',
+      paddingBottom: '24px',
+      borderBottom: '1px solid #f3f4f6',
+    },
+    criterionTitle: {
+      fontSize: '15px',
+      fontWeight: '500',
+      color: '#111827',
+      marginBottom: '12px',
+      lineHeight: '1.5',
+    },
+    evidenceLabel: {
+      fontSize: '13px',
+      color: '#6b7280',
+      marginBottom: '8px',
+      fontStyle: 'italic',
+    },
+    maturityLevels: {
+      display: 'grid',
+      gridTemplateColumns: 'repeat(4, 1fr)',
+      gap: '12px',
+      marginBottom: '16px',
+    },
+    maturityOption: {
+      position: 'relative',
+      cursor: 'pointer',
+    },
+    maturityInput: {
+      position: 'absolute',
+      opacity: 0,
+      width: 0,
+      height: 0,
+    },
+    maturityLabel: {
+      display: 'block',
+      padding: '12px',
+      border: '2px solid #e5e7eb',
+      borderRadius: '8px',
+      textAlign: 'center',
+      transition: 'all 0.2s',
+      fontSize: '13px',
+      fontWeight: '500',
+      cursor: 'pointer',
+    },
+    maturityLabelSelected: {
+      borderColor: '#2563eb',
+      background: '#eff6ff',
+      color: '#2563eb',
+    },
+    maturityValue: {
+      display: 'block',
+      fontSize: '18px',
+      fontWeight: 'bold',
+      marginBottom: '4px',
+    },
+    uploadSection: {
+      marginTop: '12px',
+    },
+    uploadLabel: {
+      fontSize: '13px',
+      fontWeight: '500',
+      color: '#374151',
+      marginBottom: '8px',
+      display: 'block',
+    },
+    uploadArea: {
+      border: '2px dashed #d1d5db',
+      borderRadius: '8px',
+      padding: '16px',
+      textAlign: 'center',
+      cursor: 'pointer',
+      transition: 'all 0.2s',
+      background: '#fafafa',
+    },
+    uploadAreaHover: {
+      borderColor: '#2563eb',
+      background: '#eff6ff',
+    },
+    uploadIcon: {
+      fontSize: '24px',
+      marginBottom: '8px',
+    },
+    uploadText: {
+      fontSize: '13px',
+      color: '#6b7280',
+    },
+    fileInfo: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: '8px',
+      padding: '12px',
+      background: '#f3f4f6',
+      borderRadius: '8px',
+      marginTop: '8px',
+    },
+    commentSection: {
+      marginTop: '12px',
+    },
+    commentLabel: {
+      fontSize: '13px',
+      fontWeight: '500',
+      color: '#374151',
+      marginBottom: '8px',
+      display: 'block',
+    },
+    commentInput: {
+      width: '100%',
+      padding: '10px 12px',
+      border: '1px solid #d1d5db',
+      borderRadius: '6px',
+      fontSize: '14px',
+      minHeight: '80px',
+      resize: 'vertical',
+      fontFamily: 'inherit',
+    },
+    actionButtons: {
+      position: 'sticky',
+      bottom: '20px',
+      background: 'white',
+      padding: '20px',
+      borderRadius: '12px',
+      boxShadow: '0 -4px 6px rgba(0,0,0,0.05), 0 1px 3px rgba(0,0,0,0.1)',
+      display: 'flex',
+      gap: '12px',
+      justifyContent: 'flex-end',
+      marginTop: '24px',
+    },
+    cancelBtn: {
+      padding: '12px 24px',
+      background: '#f3f4f6',
+      color: '#374151',
+      border: 'none',
+      borderRadius: '8px',
+      cursor: 'pointer',
+      fontSize: '14px',
+      fontWeight: '500',
+    },
+    submitBtn: {
+      padding: '12px 24px',
+      background: '#2563eb',
+      color: 'white',
+      border: 'none',
+      borderRadius: '8px',
+      cursor: 'pointer',
+      fontSize: '14px',
+      fontWeight: '600',
+    },
+  };
+  
+  if (!evaluation) {
+    return (
+      <div style={{ ...styles.container, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <p>Loading...</p>
+      </div>
+    );
+  }
+  
+  const overallProgress = calculateProgress();
   
   return (
-    <MainLayout>
-      <div className="max-w-7xl mx-auto space-y-6">
-        {/* Header */}
-        <div className="flex justify-between items-center">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">Evaluation Form</h1>
-            <p className="text-gray-600 mt-1">Complete all criteria to submit</p>
+    <div style={styles.container}>
+      {/* Header */}
+      <header style={styles.header}>
+        <div style={styles.headerContent}>
+          <div style={styles.logo} onClick={() => navigate('/organization/dashboard')}>
+            <div style={styles.logoIcon}>🛡️</div>
+            <span style={styles.logoText}>Governance Platform</span>
           </div>
-          <button
-            onClick={handleSaveDraft}
-            className="flex items-center gap-2 px-4 py-2 border-2 border-primary-600 text-primary-600 rounded-lg font-semibold hover:bg-primary-50 transition-colors"
-          >
-            <Save size={20} />
-            Save Draft
-          </button>
+          
+          <div style={styles.headerRight}>
+            <button 
+              style={styles.saveDraftBtn}
+              onClick={handleSaveDraft}
+              disabled={saving}
+              onMouseEnter={(e) => e.target.style.background = '#e5e7eb'}
+              onMouseLeave={(e) => e.target.style.background = '#f3f4f6'}
+            >
+              {saving ? '💾 Saving...' : '💾 Save Draft'}
+            </button>
+            
+            <div style={styles.userInfo}>
+              <span>👤</span>
+              <span style={{ fontSize: '14px', fontWeight: '500' }}>
+                {user.fullName || 'User'}
+              </span>
+            </div>
+            
+            <button 
+              onClick={handleLogout}
+              style={styles.logoutBtn}
+              onMouseEnter={(e) => e.target.style.background = '#dc2626'}
+              onMouseLeave={(e) => e.target.style.background = '#ef4444'}
+            >
+              Logout
+            </button>
+          </div>
         </div>
-        
-        {/* Progress Bar */}
-        <div className="bg-white rounded-xl p-6 border border-gray-200">
-          <div className="flex justify-between items-center mb-3">
-            <p className="text-sm font-medium text-gray-700">Overall Progress</p>
-            <p className="text-xl font-bold text-primary-600">{progress}%</p>
+      </header>
+      
+      <div style={styles.layout}>
+        {/* Sidebar Navigation */}
+        <aside style={styles.sidebar}>
+          <h3 style={styles.sidebarTitle}>Principles</h3>
+          <div style={styles.principleNav}>
+            {GOVERNANCE_PRINCIPLES.map((principle) => {
+              const { completed, total } = getPrincipleProgress(principle);
+              const isExpanded = expandedPrinciples.includes(principle.id);
+              
+              return (
+                <div
+                  key={principle.id}
+                  style={{
+                    ...styles.principleNavItem,
+                    ...(isExpanded ? styles.principleNavItemActive : {})
+                  }}
+                  onClick={() => {
+                    togglePrinciple(principle.id);
+                    document.getElementById(`principle-${principle.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                  }}
+                  onMouseEnter={(e) => !isExpanded && (e.currentTarget.style.background = '#f9fafb')}
+                  onMouseLeave={(e) => !isExpanded && (e.currentTarget.style.background = 'transparent')}
+                >
+                  <span>{principle.id}. {principle.name}</span>
+                  <span style={styles.progressBadge}>{completed}/{total}</span>
+                </div>
+              );
+            })}
           </div>
-          <div className="w-full h-3 bg-gray-200 rounded-full overflow-hidden">
-            <div 
-              className="h-full bg-gradient-to-r from-primary-500 to-primary-400 rounded-full transition-all duration-500"
-              style={{ width: `${progress}%` }}
-            ></div>
-          </div>
-        </div>
+        </aside>
         
-        {/* Evaluation Form */}
-        <div className="flex gap-6">
-          {/* Left Sidebar - Principles Navigation */}
-          <div className="w-64 flex-shrink-0">
-            <div className="bg-white rounded-xl p-4 border border-gray-200 sticky top-6">
-              <h3 className="text-sm font-bold text-gray-900 mb-3">Principles</h3>
-              <div className="space-y-1">
-                {evaluationData.principles.map((principle) => {
-                  const completed = principle.practices.reduce(
-                    (sum, practice) => sum + practice.criteria.filter(
-                      c => selectedLevels[c.id] !== undefined
-                    ).length, 0
-                  );
-                  const total = principle.practices.reduce(
-                    (sum, practice) => sum + practice.criteria.length, 0
-                  );
-                  const isComplete = completed === total;
-                  
-                  return (
-                    <button
-                      key={principle.id}
-                      onClick={() => {
-                        document.getElementById(`principle-${principle.id}`)?.scrollIntoView({ 
-                          behavior: 'smooth', 
-                          block: 'start' 
-                        });
-                      }}
-                      className="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-100 transition-colors text-left"
-                    >
-                      {isComplete ? (
-                        <CheckCircle2 size={16} className="text-green-600 flex-shrink-0" />
-                      ) : (
-                        <Circle size={16} className="text-gray-400 flex-shrink-0" />
-                      )}
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-900 truncate">
-                          {principle.name}
-                        </p>
-                        <p className="text-xs text-gray-500">
-                          {completed}/{total}
-                        </p>
-                      </div>
-                    </button>
-                  );
-                })}
+        {/* Main Form */}
+        <main style={styles.main}>
+          {/* Form Header */}
+          <div style={styles.formHeader}>
+            <h1 style={styles.formTitle}>Evaluation Form</h1>
+            <p style={styles.formSubtitle}>{evaluation.name}</p>
+            
+            <div style={styles.progressContainer}>
+              <div style={styles.progressLabel}>
+                <span>Overall Progress</span>
+                <span>{overallProgress}%</span>
+              </div>
+              <div style={styles.progressBar}>
+                <div style={{...styles.progressFill, width: `${overallProgress}%`}} />
               </div>
             </div>
           </div>
           
-          {/* Main Content - Principles & Criteria */}
-          <div className="flex-1 space-y-4">
-            {evaluationData.principles.map((principle) => (
-              <div 
-                key={principle.id} 
-                id={`principle-${principle.id}`}
-                className="bg-white rounded-xl border border-gray-200 overflow-hidden"
-              >
-                {/* Principle Header */}
-                <button
+          {/* Principles */}
+          {GOVERNANCE_PRINCIPLES.map((principle) => {
+            const isExpanded = expandedPrinciples.includes(principle.id);
+            const { completed, total } = getPrincipleProgress(principle);
+            
+            return (
+              <div key={principle.id} id={`principle-${principle.id}`} style={styles.principleSection}>
+                <div 
+                  style={{
+                    ...styles.principleHeader,
+                    ...(isExpanded ? styles.principleHeaderExpanded : {})
+                  }}
                   onClick={() => togglePrinciple(principle.id)}
-                  className="w-full flex items-center justify-between p-6 hover:bg-gray-50 transition-colors"
+                  onMouseEnter={(e) => !isExpanded && (e.currentTarget.style.background = '#f9fafb')}
+                  onMouseLeave={(e) => !isExpanded && (e.currentTarget.style.background = '#fafafa')}
                 >
-                  <div className="flex items-center gap-3">
-                    {expandedPrinciples.includes(principle.id) ? (
-                      <ChevronDown size={20} className="text-gray-600" />
-                    ) : (
-                      <ChevronRight size={20} className="text-gray-600" />
-                    )}
-                    <h2 className="text-xl font-bold text-gray-900">
-                      Principle {principle.id}: {principle.name}
-                    </h2>
+                  <div style={styles.principleTitle}>
+                    <div style={styles.principleNumber}>{principle.id}</div>
+                    <div>
+                      <div>{principle.name}</div>
+                      <div style={{ fontSize: '13px', color: '#6b7280', fontWeight: '400', marginTop: '4px' }}>
+                        {principle.description}
+                      </div>
+                    </div>
                   </div>
-                </button>
+                  
+                  <div style={styles.principleProgress}>
+                    <span style={{ fontSize: '14px', color: '#6b7280' }}>
+                      {completed}/{total} criteria
+                    </span>
+                    <span style={{
+                      ...styles.chevron,
+                      ...(isExpanded ? styles.chevronExpanded : {})
+                    }}>
+                      ⌄
+                    </span>
+                  </div>
+                </div>
                 
-                {/* Practices & Criteria */}
-                {expandedPrinciples.includes(principle.id) && (
-                  <div className="px-6 pb-6 space-y-4">
-                    {principle.practices.map((practice) => (
-                      <div key={practice.id} className="border border-gray-200 rounded-lg overflow-hidden">
-                        {/* Practice Header */}
-                        <button
-                          onClick={() => togglePractice(practice.id)}
-                          className="w-full flex items-center gap-3 p-4 bg-gray-50 hover:bg-gray-100 transition-colors"
-                        >
-                          {expandedPractices.includes(practice.id) ? (
-                            <ChevronDown size={18} className="text-gray-600" />
-                          ) : (
-                            <ChevronRight size={18} className="text-gray-600" />
-                          )}
-                          <h3 className="text-lg font-semibold text-gray-900">
-                            Practice {practice.id}: {practice.name}
-                          </h3>
-                        </button>
-                        
-                        {/* Criteria */}
-                        {expandedPractices.includes(practice.id) && (
-                          <div className="p-4 space-y-6">
-                            {practice.criteria.map((criterion) => (
-                              <div 
-                                key={criterion.id} 
-                                className="border border-gray-200 rounded-lg p-5 bg-white space-y-4"
-                              >
-                                {/* Criterion Header */}
-                                <div>
-                                  <h4 className="text-base font-semibold text-gray-900 mb-1">
-                                    Criterion {criterion.id}: {criterion.name}
-                                  </h4>
-                                  <p className="text-sm text-gray-600">
-                                    {criterion.description}
-                                  </p>
-                                </div>
+                {isExpanded && (
+                  <div style={styles.principleContent}>
+                    {principle.practices.map((practice) => {
+                      const practiceKey = `${principle.id}-${practice.id}`;
+                      const isPracticeExpanded = expandedPractices[practiceKey];
+                      
+                      return (
+                        <div key={practice.id} style={styles.practiceSection}>
+                          <div 
+                            style={styles.practiceHeader}
+                            onClick={() => togglePractice(principle.id, practice.id)}
+                          >
+                            <div style={styles.practiceTitle}>
+                              Practice {practice.id}: {practice.name}
+                            </div>
+                            <span style={{
+                              ...styles.chevron,
+                              ...(isPracticeExpanded ? styles.chevronExpanded : {})
+                            }}>
+                              ⌄
+                            </span>
+                          </div>
+                          
+                          {isPracticeExpanded && (
+                            <div style={styles.practiceContent}>
+                              {practice.criteria.map((criterion) => {
+                                const key = `${principle.id}-${practice.id}-${criterion.id}`;
+                                const response = responses[key] || {};
                                 
-                                {/* Maturity Level Selection */}
-                                <div>
-                                  <label className="block text-sm font-medium text-gray-900 mb-2">
-                                    Maturity Level: <span className="text-red-600">*</span>
-                                  </label>
-                                  <div className="space-y-2">
-                                    {maturityLevels.map((level) => (
+                                return (
+                                  <div key={criterion.id} style={styles.criterionCard}>
+                                    <div style={styles.criterionTitle}>
+                                      Criterion {criterion.id}: {criterion.text}
+                                    </div>
+                                    
+                                    <div style={styles.evidenceLabel}>
+                                      📎 Evidence: {criterion.evidence}
+                                    </div>
+                                    
+                                    {/* Maturity Level Selector */}
+                                    <div style={styles.maturityLevels}>
+                                      {MATURITY_LEVELS.map((level) => (
+                                        <div key={level.value} style={styles.maturityOption}>
+                                          <input
+                                            type="radio"
+                                            id={`${key}-${level.value}`}
+                                            name={key}
+                                            value={level.value}
+                                            checked={response.maturityLevel === level.value}
+                                            onChange={() => handleMaturityChange(principle.id, practice.id, criterion.id, level.value)}
+                                            style={styles.maturityInput}
+                                          />
+                                          <label
+                                            htmlFor={`${key}-${level.value}`}
+                                            style={{
+                                              ...styles.maturityLabel,
+                                              ...(response.maturityLevel === level.value ? styles.maturityLabelSelected : {})
+                                            }}
+                                          >
+                                            <span style={styles.maturityValue}>{level.value}</span>
+                                            <span>{level.label}</span>
+                                          </label>
+                                        </div>
+                                      ))}
+                                    </div>
+                                    
+                                    {/* File Upload */}
+                                    <div style={styles.uploadSection}>
+                                      <label style={styles.uploadLabel}>
+                                        Supporting Evidence:
+                                      </label>
                                       <label 
-                                        key={level.value}
-                                        className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors"
+                                        style={styles.uploadArea}
+                                        onMouseEnter={(e) => Object.assign(e.currentTarget.style, styles.uploadAreaHover)}
+                                        onMouseLeave={(e) => {
+                                          e.currentTarget.style.borderColor = '#d1d5db';
+                                          e.currentTarget.style.background = '#fafafa';
+                                        }}
                                       >
                                         <input
-                                          type="radio"
-                                          name={`criterion-${criterion.id}`}
-                                          value={level.value}
-                                          checked={selectedLevels[criterion.id] === level.value}
-                                          onChange={() => handleMaturityChange(criterion.id, level.value)}
-                                          className="w-4 h-4 text-primary-600"
+                                          type="file"
+                                          style={{ display: 'none' }}
+                                          onChange={(e) => handleFileUpload(principle.id, practice.id, criterion.id, e)}
+                                          accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
                                         />
-                                        <span className={`text-sm font-medium ${level.color}`}>
-                                          {level.label}
-                                        </span>
+                                        <div style={styles.uploadIcon}>📎</div>
+                                        <div style={styles.uploadText}>
+                                          Click to upload or drag and drop
+                                        </div>
                                       </label>
-                                    ))}
-                                  </div>
-                                </div>
-                                
-                                {/* Evidence Upload */}
-                                <div>
-                                  <label className="block text-sm font-medium text-gray-900 mb-2">
-                                    Supporting Evidence:
-                                  </label>
-                                  {uploadedFiles[criterion.id] ? (
-                                    <div className="flex items-center justify-between p-3 bg-green-50 border border-green-200 rounded-lg">
-                                      <div className="flex items-center gap-2">
-                                        <CheckCircle2 size={18} className="text-green-600" />
-                                        <span className="text-sm font-medium text-green-900">
-                                          {uploadedFiles[criterion.id].name}
-                                        </span>
-                                        <span className="text-xs text-green-600">
-                                          ({(uploadedFiles[criterion.id].size / 1024).toFixed(1)} KB)
-                                        </span>
-                                      </div>
-                                      <button
-                                        onClick={() => removeFile(criterion.id)}
-                                        className="p-1 hover:bg-green-100 rounded transition-colors"
-                                      >
-                                        <X size={16} className="text-green-600" />
-                                      </button>
+                                      
+                                      {response.fileName && (
+                                        <div style={styles.fileInfo}>
+                                          <span>📄</span>
+                                          <span style={{ flex: 1, fontSize: '13px' }}>{response.fileName}</span>
+                                          <span style={{ fontSize: '12px', color: '#6b7280' }}>
+                                            {(response.fileSize / 1024).toFixed(1)} KB
+                                          </span>
+                                        </div>
+                                      )}
                                     </div>
-                                  ) : (
-                                    <label className="flex items-center justify-center gap-2 p-4 border-2 border-dashed border-gray-300 rounded-lg hover:border-primary-400 hover:bg-primary-50 cursor-pointer transition-colors">
-                                      <Upload size={20} className="text-gray-400" />
-                                      <span className="text-sm font-medium text-gray-600">
-                                        Upload File
-                                      </span>
-                                      <input
-                                        type="file"
-                                        onChange={(e) => handleFileUpload(criterion.id, e)}
-                                        className="hidden"
-                                        accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                                    
+                                    {/* Comment */}
+                                    <div style={styles.commentSection}>
+                                      <label style={styles.commentLabel}>
+                                        Comment (optional):
+                                      </label>
+                                      <textarea
+                                        style={styles.commentInput}
+                                        placeholder="Add any additional comments or context..."
+                                        value={response.comment || ''}
+                                        onChange={(e) => handleCommentChange(principle.id, practice.id, criterion.id, e.target.value)}
                                       />
-                                    </label>
-                                  )}
-                                </div>
-                                
-                                {/* Comment */}
-                                <div>
-                                  <label className="block text-sm font-medium text-gray-900 mb-2">
-                                    Comment (optional):
-                                  </label>
-                                  <textarea
-                                    value={comments[criterion.id] || ''}
-                                    onChange={(e) => setComments(prev => ({ ...prev, [criterion.id]: e.target.value }))}
-                                    rows={3}
-                                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent resize-none"
-                                    placeholder="Add any additional comments or context..."
-                                  />
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    ))}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>
-            ))}
-            
-            {/* Submit Button */}
-            <div className="flex justify-end gap-4 pt-6">
-              <button
-                onClick={handleSaveDraft}
-                className="px-6 py-3 border-2 border-gray-300 text-gray-700 rounded-lg font-semibold hover:bg-gray-50 transition-colors"
-              >
-                Save Draft
-              </button>
-              <button
-                onClick={handleSubmit}
-                disabled={progress < 100}
-                className="flex items-center gap-2 px-6 py-3 bg-primary-600 text-white rounded-lg font-semibold hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                <Send size={20} />
-                Submit Evaluation
-              </button>
-            </div>
+            );
+          })}
+          
+          {/* Action Buttons */}
+          <div style={styles.actionButtons}>
+            <button
+              style={styles.cancelBtn}
+              onClick={() => navigate('/organization/evaluations')}
+              onMouseEnter={(e) => e.target.style.background = '#e5e7eb'}
+              onMouseLeave={(e) => e.target.style.background = '#f3f4f6'}
+            >
+              Cancel
+            </button>
+            <button
+              style={styles.submitBtn}
+              onClick={handleSubmit}
+              onMouseEnter={(e) => e.target.style.background = '#1d4ed8'}
+              onMouseLeave={(e) => e.target.style.background = '#2563eb'}
+            >
+              Submit Evaluation
+            </button>
           </div>
-        </div>
+        </main>
       </div>
-    </MainLayout>
+    </div>
   );
 };
 

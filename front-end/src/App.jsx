@@ -5,33 +5,29 @@ import RegisterPage from './Pages/auth/RegisterPage';
 import DashboardPage from './Pages/Organization/DashboardPage';
 import EvaluationsListPage from './Pages/Organization/EvaluationsListPage';
 import NewEvaluationPage from './Pages/Organization/NewEvaluationPage';
+import EvaluationFormPage from './Pages/Organization/EvaluationFormPage';
 import EvaluationDetailsPage from './Pages/Organization/EvaluationDetailsPage';
 import ResultsPage from './Pages/Organization/ResultsPage';
 import { ROUTES, STORAGE_KEYS, USER_ROLES } from './utils/constants';
 
-// Protected Route component - FIXED VERSION
+// Protected Route component
 const ProtectedRoute = ({ children, allowedRoles = [] }) => {
   const token = localStorage.getItem(STORAGE_KEYS.TOKEN);
   const userStr = localStorage.getItem(STORAGE_KEYS.USER);
   
-  console.log('🔐 ProtectedRoute Check:', { token, userStr }); // Debug log
-  
   if (!token) {
-    console.log('❌ No token found, redirecting to login');
     return <Navigate to={ROUTES.LOGIN} replace />;
   }
 
   if (userStr) {
     try {
       const user = JSON.parse(userStr);
-      console.log('✅ User found:', user); // Debug log
       
       if (allowedRoles.length > 0 && !allowedRoles.includes(user.role)) {
-        console.log('❌ Role not allowed:', user.role);
-        return <Navigate to="/unauthorized" replace />;
+        return <Navigate to={ROUTES.LOGIN} replace />;
       }
     } catch (error) {
-      console.error('❌ Error parsing user:', error);
+      console.error('Error parsing user:', error);
       return <Navigate to={ROUTES.LOGIN} replace />;
     }
   }
@@ -71,6 +67,15 @@ function App() {
           element={
             <ProtectedRoute allowedRoles={[USER_ROLES.ORGANIZATION]}>
               <NewEvaluationPage />
+            </ProtectedRoute>
+          }
+        />
+        
+        <Route
+          path="/organization/evaluations/:id/form"
+          element={
+            <ProtectedRoute allowedRoles={[USER_ROLES.ORGANIZATION]}>
+              <EvaluationFormPage />
             </ProtectedRoute>
           }
         />
